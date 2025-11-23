@@ -21,3 +21,91 @@
 .prose ul > li::marker {
     color: #38bdf8;
 }
+
+/* Base typography for article content */
+
+.article-body {
+    font-size: 0.95rem;
+    line-height: 1.7;
+}
+
+/* Headings */
+.article-body h1 {
+    font-size: 1.9rem;
+    font-weight: 700;
+    margin: 0 0 1rem 0;
+}
+
+.article-body h2 {
+    font-size: 1.4rem;
+    font-weight: 600;
+    margin: 1.5rem 0 0.75rem 0;
+}
+
+.article-body h3 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 1.25rem 0 0.5rem 0;
+}
+
+/* Paragraphs */
+.article-body p {
+    margin: 0.6rem 0;
+}
+
+/* Lists */
+.article-body ul,
+.article-body ol {
+    margin: 0.75rem 0 0.75rem 1.5rem;
+    padding-left: 1rem;
+}
+
+.article-body ul {
+    list-style: disc;
+}
+
+.article-body ol {
+    list-style: decimal;
+}
+
+.article-body li {
+    margin: 0.25rem 0;
+}
+
+/* Inline code and code blocks */
+.article-body code {
+    font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    background: rgba(15, 23, 42, 0.85);
+    padding: 0.1rem 0.25rem;
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+
+.article-body pre {
+    font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    background: rgba(15, 23, 42, 0.95);
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 0.9rem 0;
+}
+
+/* Make blockquotes look like info cards */
+.article-body blockquote {
+    border-left: 4px solid #38bdf8;
+    padding-left: 1rem;
+    margin: 0.9rem 0;
+    background: rgba(15, 23, 42, 0.8);
+    border-radius: 0.25rem;
+}
+
+.article-body blockquote p:first-child {
+    margin-top: 0.25rem;
+}
+
+/* Slightly nicer list markers (dark mode accent) */
+.article-body ul > li::marker,
+.article-body ol > li::marker {
+    color: #38bdf8;
+}
+

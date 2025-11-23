@@ -223,7 +223,7 @@
                     <?php endif; ?>
                 </nav>
 
-                <article class="prose prose-slate max-w-none dark:prose-invert">
+                <article class="article-body max-w-none">
                     <?php echo $htmlContent; ?>
                 </article>
             </div>
