@@ -1,5 +1,5 @@
 <?php
-// nixjump flat-file site: PHP + Markdown + auto categories
+// nixjump flat-file site: PHP + Markdown + auto categories + clean URLs
 
 require __DIR__ . '/lib/Parsedown.php';
 
@@ -7,7 +7,7 @@ $CONTENT_DIR = __DIR__ . '/content';
 
 $parsedown = new Parsedown();
 
-// Helper: nice title from slug (linux-basics -> Linux basics)
+// Helper: nice title from slug (linux-basics -> Linux Basics)
 function slug_to_title(string $slug): string {
     $slug = str_replace(['_', '-'], ' ', $slug);
     return ucwords($slug);
@@ -108,9 +108,32 @@ function build_site_structure(string $contentDir): array {
 
 $structure = build_site_structure($CONTENT_DIR);
 
-// Determine requested page
-$cat = $_GET['cat'] ?? null;
-$page = $_GET['page'] ?? null;
+// ---- Routing: parse /cat[/page] from ?path=... (set by .htaccess) ----
+
+$rawPath = $_GET['path'] ?? '';
+$rawPath = trim($rawPath, "/");
+
+$cat = null;
+$page = null;
+
+if ($rawPath === '') {
+    // Root URL -> main page
+    $cat = null;
+    $page = null;
+} else {
+    $segments = explode('/', $rawPath);
+
+    $cat = $segments[0] ?? null;
+    $page = $segments[1] ?? null;
+}
+
+// Sanitize slugs (only allow a-zA-Z0-9-_)
+if ($cat !== null) {
+    $cat = preg_replace('/[^a-zA-Z0-9\-_]/', '', $cat);
+}
+if ($page !== null) {
+    $page = preg_replace('/[^a-zA-Z0-9\-_]/', '', $page);
+}
 
 $currentCat = null;
 $currentPage = null;
@@ -132,7 +155,7 @@ function render_markdown(Parsedown $parsedown, string $file, string $fallbackMar
 
 // Routing logic
 if ($cat === null) {
-    // No category => main page
+    // Main page
     $mainFile = $structure['main']['file'];
     $pageTitle = $structure['main']['title'];
     $htmlContent = render_markdown(
@@ -141,10 +164,6 @@ if ($cat === null) {
         "# nixjump\n\nMain page not found."
     );
 } else {
-    // Sanitize cat & page: only allow [a-zA-Z0-9-_]
-    $cat = preg_replace('/[^a-zA-Z0-9\-_]/', '', $cat);
-    $page = $page !== null ? preg_replace('/[^a-zA-Z0-9\-_]/', '', $page) : null;
-
     if (!isset($structure['categories'][$cat])) {
         http_response_code(404);
         $pageTitle = 'Not found - nixjump';
@@ -152,7 +171,7 @@ if ($cat === null) {
     } else {
         $currentCat = $structure['categories'][$cat];
 
-        if ($page === null) {
+        if ($page === null || $page === '') {
             // Category index
             if ($currentCat['indexFile']) {
                 $pageTitle = $currentCat['indexTitle'] . ' - nixjump';
