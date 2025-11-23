@@ -191,8 +191,8 @@
         </aside>
 
         <!-- Main content -->
-        <main class="flex-1 flex justify-center">
-            <div class="w-full max-w-3xl px-6 py-8">
+        <main class="flex-1 flex justify-start">
+            <div class="w-full max-w-3xl px-6 py-8 ml-12 lg:ml-24">
                 <!-- Breadcrumbs -->
                 <nav class="text-xs text-slate-500 dark:text-slate-400 mb-4">
                     <a href="/" class="hover:text-nix-accent">Home</a>
