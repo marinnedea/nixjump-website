@@ -1,129 +1,210 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title><?php echo htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8'); ?></title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+<?php
+// nixjump flat-file site: PHP + Markdown + auto categories + clean URLs
 
-    <!-- Tailwind 3.x via CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        'nix-bg': '#020617',
-                        'nix-sidebar': '#020617',
-                        'nix-sidebar-border': '#1f2937',
-                        'nix-text': '#e5e7eb',
-                        'nix-muted': '#9ca3af',
-                        'nix-accent': '#38bdf8',
-                        'nix-accent-strong': '#f97316',
-                    }
+require __DIR__ . '/lib/Parsedown.php';
+
+$CONTENT_DIR = __DIR__ . '/content';
+
+$parsedown = new Parsedown();
+
+// Helper: nice title from slug (linux-basics -> Linux Basics)
+function slug_to_title(string $slug): string {
+    $slug = str_replace(['_', '-'], ' ', $slug);
+    return ucwords($slug);
+}
+
+// Helper: read first "# Heading" as title, fallback to filename
+function extract_title_from_md(string $filepath, string $fallback): string {
+    if (!is_readable($filepath)) {
+        return $fallback;
+    }
+    $contents = file_get_contents($filepath);
+    if ($contents === false) {
+        return $fallback;
+    }
+    if (preg_match('/^#\s+(.+)\s*$/m', $contents, $m)) {
+        return trim($m[1]);
+    }
+    return $fallback;
+}
+
+// Scan content directory: build categories + pages
+function build_site_structure(string $contentDir): array {
+    $structure = [
+        'main' => [
+            'file' => $contentDir . '/_main.md',
+            'title' => 'nixjump',
+        ],
+        'categories' => [], // slug => [title, indexFile?, pages[]]
+    ];
+
+    if (!is_dir($contentDir)) {
+        return $structure;
+    }
+
+    $entries = scandir($contentDir);
+    foreach ($entries as $entry) {
+        if ($entry === '.' || $entry === '..') {
+            continue;
+        }
+        $fullPath = $contentDir . '/' . $entry;
+        if (is_dir($fullPath)) {
+            $catSlug = $entry;
+            $catTitle = slug_to_title($catSlug);
+
+            $cat = [
+                'slug' => $catSlug,
+                'title' => $catTitle,
+                'indexFile' => null,
+                'indexTitle' => $catTitle,
+                'pages' => [], // pageSlug => [title, file]
+            ];
+
+            $files = scandir($fullPath);
+            foreach ($files as $f) {
+                if ($f === '.' || $f === '..') {
+                    continue;
                 }
+                $filePath = $fullPath . '/' . $f;
+                if (!is_file($filePath)) {
+                    continue;
+                }
+                if (substr($f, -3) !== '.md') {
+                    continue;
+                }
+
+                if ($f === '_index.md') {
+                    $cat['indexFile'] = $filePath;
+                    $cat['indexTitle'] = extract_title_from_md($filePath, $catTitle);
+                    continue;
+                }
+
+                $pageSlug = substr($f, 0, -3);
+                $pageTitle = extract_title_from_md($filePath, slug_to_title($pageSlug));
+
+                $cat['pages'][$pageSlug] = [
+                    'slug' => $pageSlug,
+                    'title' => $pageTitle,
+                    'file' => $filePath,
+                ];
+            }
+
+            // Sort pages by title
+            uasort($cat['pages'], function ($a, $b) {
+                return strcasecmp($a['title'], $b['title']);
+            });
+
+            $structure['categories'][$catSlug] = $cat;
+        }
+    }
+
+    // Sort categories by title
+    uasort($structure['categories'], function ($a, $b) {
+        return strcasecmp($a['title'], $b['title']);
+    });
+
+    return $structure;
+}
+
+$structure = build_site_structure($CONTENT_DIR);
+
+// ---- Routing: parse /cat[/page] from ?path=... (set by .htaccess) ----
+
+$rawPath = $_GET['path'] ?? '';
+$rawPath = trim($rawPath, "/");
+
+$cat = null;
+$page = null;
+
+if ($rawPath === '') {
+    // Root URL -> main page
+    $cat = null;
+    $page = null;
+} else {
+    $segments = explode('/', $rawPath);
+
+    $cat = $segments[0] ?? null;
+    $page = $segments[1] ?? null;
+}
+
+// Sanitize slugs (only allow a-zA-Z0-9-_)
+if ($cat !== null) {
+    $cat = preg_replace('/[^a-zA-Z0-9\-_]/', '', $cat);
+}
+if ($page !== null) {
+    $page = preg_replace('/[^a-zA-Z0-9\-_]/', '', $page);
+}
+
+$currentCat = null;
+$currentPage = null;
+$pageTitle = 'nixjump';
+$htmlContent = '';
+
+// Helper: render markdown file or fallback
+function render_markdown(Parsedown $parsedown, string $file, string $fallbackMarkdown = ''): string {
+    if (is_readable($file)) {
+        $markdown = file_get_contents($file);
+        if ($markdown === false) {
+            $markdown = $fallbackMarkdown;
+        }
+    } else {
+        $markdown = $fallbackMarkdown;
+    }
+    return $parsedown->text($markdown);
+}
+
+// Routing logic
+if ($cat === null) {
+    // Main page
+    $mainFile = $structure['main']['file'];
+    $pageTitle = $structure['main']['title'];
+    $htmlContent = render_markdown(
+        $parsedown,
+        $mainFile,
+        "# nixjump\n\nMain page not found."
+    );
+} else {
+    if (!isset($structure['categories'][$cat])) {
+        http_response_code(404);
+        $pageTitle = 'Not found - nixjump';
+        $htmlContent = $parsedown->text("# Not found\n\nThe requested category does not exist.");
+    } else {
+        $currentCat = $structure['categories'][$cat];
+
+        if ($page === null || $page === '') {
+            // Category index
+            if ($currentCat['indexFile']) {
+                $pageTitle = $currentCat['indexTitle'] . ' - nixjump';
+                $htmlContent = render_markdown(
+                    $parsedown,
+                    $currentCat['indexFile'],
+                    '# ' . $currentCat['title'] . "\n\nNo index content yet."
+                );
+            } else {
+                $pageTitle = $currentCat['title'] . ' - nixjump';
+                $htmlContent = $parsedown->text('# ' . $currentCat['title'] . "\n\nNo index content yet.");
+            }
+        } else {
+            // Specific page in category
+            if (!isset($currentCat['pages'][$page])) {
+                http_response_code(404);
+                $pageTitle = 'Not found - nixjump';
+                $htmlContent = $parsedown->text("# Not found\n\nThe requested page does not exist.");
+            } else {
+                $currentPage = $currentCat['pages'][$page];
+                $pageTitle = $currentPage['title'] . ' - ' . $currentCat['title'] . ' - nixjump';
+                $htmlContent = render_markdown(
+                    $parsedown,
+                    $currentPage['file'],
+                    '# ' . $currentPage['title'] . "\n\nContent not found."
+                );
             }
         }
-    </script>
+    }
+}
 
-    <!-- Optional: your own small overrides if you want -->
-    <link rel="stylesheet" href="/css/style.css">
-</head>
-<body class="bg-nix-bg text-nix-text min-h-screen">
+// Pass data to the template
+$categories = $structure['categories'];
 
-<div class="min-h-screen flex flex-col">
-    <div class="flex flex-1">
-        <!-- Sidebar -->
-        <aside class="w-64 bg-nix-sidebar border-r border-nix-sidebar-border flex-shrink-0">
-            <div class="h-full flex flex-col">
-                <div class="px-4 py-4 border-b border-nix-sidebar-border">
-                    <h1 class="text-xl font-semibold tracking-tight">
-                        <a href="/" class="text-white hover:text-nix-accent transition">
-                            nixjump
-                        </a>
-                    </h1>
-                </div>
-
-                <nav class="flex-1 overflow-y-auto px-4 py-4 text-sm">
-                    <!-- Main -->
-                    <div class="mb-6">
-                        <div class="text-[0.7rem] font-semibold tracking-[0.18em] text-nix-muted uppercase mb-2">
-                            Main
-                        </div>
-                        <ul class="space-y-1">
-                            <li>
-                                <a href="/"
-                                   class="block px-2 py-1 rounded-md transition
-                                   <?php echo $currentCat === null ? 'bg-slate-800 text-nix-accent-strong' : 'text-nix-text hover:bg-slate-800'; ?>">
-                                    Home
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
-
-                    <!-- Categories -->
-                    <div>
-                        <div class="text-[0.7rem] font-semibold tracking-[0.18em] text-nix-muted uppercase mb-2">
-                            Categories
-                        </div>
-
-                        <div class="space-y-3">
-                            <?php foreach ($categories as $catSlug => $catInfo): ?>
-                                <div>
-                                    <a href="/<?php echo urlencode($catSlug); ?>"
-                                       class="block px-2 py-1 rounded-md font-semibold mb-1 transition
-                                       <?php
-                                           echo ($currentCat && $currentCat['slug'] === $catSlug && $currentPage === null)
-                                               ? 'bg-slate-800 text-nix-accent-strong'
-                                               : 'text-nix-text hover:bg-slate-800';
-                                       ?>">
-                                        <?php echo htmlspecialchars($catInfo['title'], ENT_QUOTES, 'UTF-8'); ?>
-                                    </a>
-
-                                    <?php if (!empty($catInfo['pages'])): ?>
-                                        <ul class="ml-3 mt-1 space-y-1 border-l border-slate-700 pl-2">
-                                            <?php foreach ($catInfo['pages'] as $pageSlug => $pageInfo): ?>
-                                                <li>
-                                                    <a href="/<?php echo urlencode($catSlug); ?>/<?php echo urlencode($pageSlug); ?>"
-                                                       class="block px-2 py-1 rounded-md text-xs transition
-                                                       <?php
-                                                           echo ($currentCat && $currentPage &&
-                                                                 $currentCat['slug'] === $catSlug &&
-                                                                 $currentPage['slug'] === $pageSlug)
-                                                               ? 'bg-slate-800 text-nix-accent-strong'
-                                                               : 'text-nix-muted hover:bg-slate-800 hover:text-nix-text';
-                                                       ?>">
-                                                        <?php echo htmlspecialchars($pageInfo['title'], ENT_QUOTES, 'UTF-8'); ?>
-                                                    </a>
-                                                </li>
-                                            <?php endforeach; ?>
-                                        </ul>
-                                    <?php endif; ?>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-                </nav>
-            </div>
-        </aside>
-
-        <!-- Main content -->
-        <main class="flex-1 flex justify-center">
-            <div class="w-full max-w-3xl px-6 py-8">
-                <article class="prose prose-invert prose-slate max-w-none">
-                    <?php echo $htmlContent; ?>
-                </article>
-            </div>
-        </main>
-    </div>
-
-    <!-- Footer -->
-    <footer class="border-t border-nix-sidebar-border py-3 text-xs text-nix-muted">
-        <div class="max-w-3xl mx-auto px-6">
-            &copy; <?php echo date('Y'); ?> nixjump
-        </div>
-    </footer>
-</div>
-
-</body>
-</html>
-
+// Render layout
+require __DIR__ . '/templates/layout.php';
