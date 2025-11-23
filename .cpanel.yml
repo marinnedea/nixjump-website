@@ -1,0 +1,4 @@
+---
+deployment:
+  tasks:
+    - echo "Deployment placeholder – no actions yet"
