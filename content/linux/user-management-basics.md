@@ -5,15 +5,14 @@
 # Linux user management basics
 
 
-Managing users and permissions is one of the core tasks of a Linux administrator.  
+Managing users and permissions is one of the core tasks of a Linux administrator. 
 In this note we’ll quickly cover:
 
 
 * how to create and remove users
 * how to manage groups 
-* how to inspect permissions  
-* how to switch users safely  
-
+* how to inspect permissions 
+* how to switch users safely 
 
 > Info: These commands assume you have `sudo` access.  
 > Always be careful when removing users or modifying home directories.
@@ -32,7 +31,7 @@ id
 groups
 ```
 
-###Example:
+### Example:
 
 ```bash
 $ whoami
