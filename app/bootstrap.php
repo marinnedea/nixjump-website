@@ -27,7 +27,31 @@ function extract_title_from_md(string $filepath, string $fallback): string {
     return $fallback;
 }
 
-// Scan content directory: build categories + pages
+// Parse tags from <!-- tags: ... --> comment
+function extract_tags_from_contents(string $contents): array {
+    $tags = [];
+    if (preg_match('/<!--\s*tags\s*:\s*(.+?)\s*-->/i', $contents, $m)) {
+        $parts = explode(',', $m[1]);
+        foreach ($parts as $part) {
+            $clean = trim($part);
+            if ($clean === '') {
+                continue;
+            }
+            $tags[] = $clean;
+        }
+    }
+    return $tags;
+}
+
+// Build a URL-safe slug from a tag name
+function tag_to_slug(string $tag): string {
+    $slug = strtolower($tag);
+    $slug = preg_replace('/[^a-z0-9\-]+/i', '-', $slug);
+    $slug = trim($slug, '-');
+    return $slug === '' ? 'tag' : $slug;
+}
+
+// Scan content directory: build categories + pages + tags index
 function build_site_structure(string $contentDir): array {
     $structure = [
         'main' => [
@@ -35,17 +59,25 @@ function build_site_structure(string $contentDir): array {
             'title' => 'nixjump',
         ],
         'categories' => [], // slug => [title, indexFile?, pages[]]
+        'tags' => [],       // tagSlug => ['name' => ..., 'pages' => [...]]
     ];
 
     if (!is_dir($contentDir)) {
         return $structure;
     }
 
+    $tagsIndex = [];
+
     $entries = scandir($contentDir);
     foreach ($entries as $entry) {
         if ($entry === '.' || $entry === '..') {
             continue;
         }
+        // Ignore special/hidden dirs like _templates
+        if ($entry[0] === '_') {
+            continue;
+        }
+
         $fullPath = $contentDir . '/' . $entry;
         if (is_dir($fullPath)) {
             $catSlug = $entry;
@@ -56,7 +88,7 @@ function build_site_structure(string $contentDir): array {
                 'title' => $catTitle,
                 'indexFile' => null,
                 'indexTitle' => $catTitle,
-                'pages' => [], // pageSlug => [title, file]
+                'pages' => [], // pageSlug => [title, file, tags[]]
             ];
 
             $files = scandir($fullPath);
@@ -72,9 +104,29 @@ function build_site_structure(string $contentDir): array {
                     continue;
                 }
 
+                $contents = file_get_contents($filePath) ?: '';
+                $tags = extract_tags_from_contents($contents);
+
                 if ($f === '_index.md') {
                     $cat['indexFile'] = $filePath;
                     $cat['indexTitle'] = extract_title_from_md($filePath, $catTitle);
+
+                    // Index tags on category index too
+                    foreach ($tags as $tagName) {
+                        $tagSlug = tag_to_slug($tagName);
+                        if (!isset($tagsIndex[$tagSlug])) {
+                            $tagsIndex[$tagSlug] = [
+                                'name' => $tagName,
+                                'pages' => [],
+                            ];
+                        }
+                        $tagsIndex[$tagSlug]['pages'][] = [
+                            'title' => $cat['indexTitle'],
+                            'url' => '/' . $catSlug,
+                            'category' => $cat['title'],
+                        ];
+                    }
+
                     continue;
                 }
 
@@ -85,7 +137,24 @@ function build_site_structure(string $contentDir): array {
                     'slug' => $pageSlug,
                     'title' => $pageTitle,
                     'file' => $filePath,
+                    'tags' => $tags,
                 ];
+
+                // Index tags
+                foreach ($tags as $tagName) {
+                    $tagSlug = tag_to_slug($tagName);
+                    if (!isset($tagsIndex[$tagSlug])) {
+                        $tagsIndex[$tagSlug] = [
+                            'name' => $tagName,
+                            'pages' => [],
+                        ];
+                    }
+                    $tagsIndex[$tagSlug]['pages'][] = [
+                        'title' => $pageTitle,
+                        'url' => '/' . $catSlug . '/' . $pageSlug,
+                        'category' => $cat['title'],
+                    ];
+                }
             }
 
             // Sort pages by title
@@ -101,6 +170,13 @@ function build_site_structure(string $contentDir): array {
     uasort($structure['categories'], function ($a, $b) {
         return strcasecmp($a['title'], $b['title']);
     });
+
+    // Sort tags alphabetically by display name
+    uasort($tagsIndex, function ($a, $b) {
+        return strcasecmp($a['name'], $b['name']);
+    });
+
+    $structure['tags'] = $tagsIndex;
 
     return $structure;
 }

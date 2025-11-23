@@ -3,6 +3,8 @@
 // Build site structure
 $structure = build_site_structure($CONTENT_DIR);
 
+$allTags = $structure['tags'] ?? [];
+
 // ---- Routing: parse /cat[/page] from ?path=... (set by .htaccess) ----
 
 $rawPath = $_GET['path'] ?? '';
@@ -32,8 +34,56 @@ if ($page !== null) {
 
 $currentCat = null;
 $currentPage = null;
+$currentTag = null;
+$isTagsView = false;
 $pageTitle = 'nixjump';
 $htmlContent = '';
+
+// ---- Tags route: /tags or /tags/<tagSlug> ----
+if ($cat === 'tags') {
+    $isTagsView = true;
+    $categories = $structure['categories'];
+    $tags = $allTags;
+
+    if ($page === null || $page === '') {
+        // Tags index
+        $pageTitle = 'Tags - nixjump';
+
+        if (empty($tags)) {
+            $md = "# Tags\n\nNo tags defined yet.";
+        } else {
+            $md = "# Tags\n\n";
+            foreach ($tags as $tagSlug => $tagInfo) {
+                $count = count($tagInfo['pages']);
+                $md .= "- [" . $tagInfo['name'] . "](/tags/" . $tagSlug . ")  \n";
+                $md .= "  _" . $count . " page" . ($count !== 1 ? "s" : "") . "_\n";
+            }
+        }
+
+        $htmlContent = $parsedown->text($md);
+        return;
+    } else {
+        // Specific tag
+        if (!isset($tags[$page])) {
+            http_response_code(404);
+            $pageTitle = 'Not found - nixjump';
+            $htmlContent = $parsedown->text("# Not found\n\nThe requested tag does not exist.");
+            return;
+        }
+
+        $currentTag = $tags[$page];
+        $pageTitle = $currentTag['name'] . ' - Tags - nixjump';
+
+        $md = "# Tag: " . $currentTag['name'] . "\n\n";
+        foreach ($currentTag['pages'] as $p) {
+            $md .= "- [" . $p['title'] . "](" . $p['url'] . ")  \n";
+            $md .= "  _" . $p['category'] . "_\n";
+        }
+
+        $htmlContent = $parsedown->text($md);
+        return;
+    }
+}
 
 // ---- Search route: /search?q=... ----
 if ($cat === 'search') {
@@ -102,6 +152,7 @@ if ($cat === 'search') {
     }
 
     $categories = $structure['categories'];
+    $tags = $allTags;
     return;
 }
 
@@ -158,3 +209,4 @@ if ($cat === null) {
 
 // Shared for all normal routes
 $categories = $structure['categories'];
+$tags = $allTags;
